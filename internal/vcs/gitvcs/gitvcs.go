@@ -894,12 +894,12 @@ func usesReftable(worktreePath string) (bool, error) {
 	return strings.EqualFold(strings.TrimSpace(string(out)), "reftable"), nil
 }
 
-// headFileLock is git's HEAD.lock (O_CREAT|O_EXCL); commit writes the new HEAD into it and renames it onto HEAD, the protocol git itself uses.
+// headFileLock uses git's HEAD.lock protocol with the ownership witness from head_lock.go.
 type headFileLock struct {
 	file               *os.File
 	headPath, lockPath string
 	newHead            string
-	held               bool
+	unlock             func()
 }
 
 func lockHeadFile(worktreePath, newHead, expectedHead string) (*headFileLock, error) {
@@ -908,11 +908,11 @@ func lockHeadFile(worktreePath, newHead, expectedHead string) (*headFileLock, er
 		return nil, err
 	}
 	lockPath := headPath + ".lock"
-	file, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+	file, unlock, err := openHeadLock(worktreePath, headPath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot lock worktree HEAD: %w", err)
+		return nil, err
 	}
-	l := &headFileLock{file: file, headPath: headPath, lockPath: lockPath, newHead: newHead, held: true}
+	l := &headFileLock{file: file, headPath: headPath, lockPath: lockPath, newHead: newHead, unlock: unlock}
 	head, err := worktreeHead(worktreePath)
 	if err != nil {
 		l.abort()
@@ -938,16 +938,11 @@ func (l *headFileLock) commit() error {
 	if err := replaceFile(l.lockPath, l.headPath); err != nil {
 		return err
 	}
-	l.held = false
 	return nil
 }
 
 func (l *headFileLock) abort() {
-	_ = l.file.Close()
-	if l.held {
-		_ = os.Remove(l.lockPath)
-		l.held = false
-	}
+	l.unlock()
 }
 
 // headUpdate is a prepared `git update-ref --stdin` transaction moving a worktree's HEAD; git holds HEAD's lock until it ends.
@@ -1370,7 +1365,19 @@ func authenticateLinkedWorktree(root *os.Root, worktreePath string) error {
 }
 
 func DetachWorktree(worktreePath string) error {
-	_, err := runGit(worktreePath, "checkout", "--detach")
+	headPath, err := gitPath(worktreePath, "HEAD")
+	if err != nil {
+		return err
+	}
+	guard, err := takeHeadGuard(headPath)
+	if err != nil {
+		return err
+	}
+	defer guard.Close()
+	if err := recoverHeadLock(worktreePath, headPath); err != nil {
+		return err
+	}
+	_, err = runGit(worktreePath, "checkout", "--detach")
 	return err
 }
 
