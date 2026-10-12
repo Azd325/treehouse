@@ -133,6 +133,9 @@ func openHeadLock(worktreePath, headPath string) (*os.File, func(), error) {
 		f, err = os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 		if err != nil {
 			_ = guard.Close()
+			if os.IsExist(err) {
+				return nil, nil, fmt.Errorf("%w: cannot lock worktree HEAD: %w", ErrHeadLocked, err)
+			}
 			return nil, nil, fmt.Errorf("cannot lock worktree HEAD: %w", err)
 		}
 	}
