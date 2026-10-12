@@ -295,3 +295,104 @@ func TestHeadLockReturnAllTargetsOnlyOwnedLocks(t *testing.T) {
 		})
 	}
 }
+
+func TestHeadLockHalfResetToNewerBaseIsDirtyAndNamesReturnOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the Git delay wrapper is a POSIX shell script")
+	}
+	repo, home := setupTestRepo(t)
+	env := []string{"TREEHOUSE_ROOT=" + filepath.Join(t.TempDir(), "root")}
+	if err := os.WriteFile(filepath.Join(repo, "treehouse.toml"), []byte("max_trees = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, code := runTreehouse(t, repo, home, env, "get", "--lease", "--no-fetch")
+	if code != 0 {
+		t.Fatalf("initial get: %s", stderr)
+	}
+	slot := strings.TrimSpace(out)
+	if _, stderr, code := runTreehouse(t, repo, home, env, "return", slot); code != 0 {
+		t.Fatalf("initial return: %s", stderr)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "newer.txt"), []byte("newer\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "add", "newer.txt")
+	gitCmd(t, repo, "commit", "-m", "advance base")
+	gitCmd(t, repo, "push", "origin", "main")
+	lock := headLockPath(t, slot)
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shim := t.TempDir()
+	done, hold := filepath.Join(shim, "done"), filepath.Join(shim, "hold")
+	script := "#!/bin/sh\nif [ \"$1\" = read-tree ]; then\n  \"$TREEHOUSE_TEST_GIT\" \"$@\"\n  rc=$?\n  : > \"$TREEHOUSE_TEST_DONE\"\n  while [ ! -f \"$TREEHOUSE_TEST_HOLD\" ]; do sleep 0.02; done\n  exit $rc\nfi\nexec \"$TREEHOUSE_TEST_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shim, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(treehouseBin, "get", "--lease", "--no-fetch")
+	cmd.Dir = repo
+	cmd.Env = buildEnv(home, append(env, "PATH="+shim+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TREEHOUSE_TEST_DONE="+done, "TREEHOUSE_TEST_HOLD="+hold, "TREEHOUSE_TEST_GIT="+realGit)...)
+	var diagnostics bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &diagnostics, &diagnostics
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.WriteFile(hold, nil, 0o644)
+		_ = cmd.Process.Kill()
+	})
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(done); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("read-tree never completed: %s", diagnostics.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	if err := os.WriteFile(hold, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		procs, err := process.FindProcessesInWorktree(slot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(procs) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Git child did not exit: %v", procs)
+		}
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("killed reset did not leave HEAD.lock: %v", err)
+	}
+	if porcelain := gitCmd(t, slot, "status", "--porcelain"); strings.TrimSpace(porcelain) == "" {
+		t.Fatal("a reset killed between two different commits must leave the slot dirty")
+	}
+
+	_, stderr, code = runTreehouse(t, repo, home, env, "get", "--lease", "--no-fetch")
+	if code == 0 || !strings.Contains(stderr, lock) {
+		t.Fatalf("full-pool get must name the lock: code=%d %s", code, stderr)
+	}
+	out, stderr, code = runTreehouse(t, repo, home, env, "status", "--json")
+	var statuses []struct {
+		Status    string `json:"status"`
+		LockError string `json:"lock_error"`
+	}
+	if err := json.Unmarshal([]byte(out), &statuses); err != nil || code != 0 || len(statuses) != 1 {
+		t.Fatalf("status JSON: %s (%s, %v)", out, stderr, err)
+	}
+	if statuses[0].Status != "locked" || !strings.Contains(statuses[0].LockError, "run return") || strings.Contains(statuses[0].LockError, "retry get") {
+		t.Fatalf("a dirty half-reset slot must name return only: %+v", statuses[0])
+	}
+}
