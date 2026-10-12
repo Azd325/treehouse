@@ -202,7 +202,7 @@ You can instead keep the pool [inside the project](#in-project-storage) with `--
 | `enter`   | `--print-path` | Print only the worktree's absolute path to stdout instead of opening a subshell (for `cd "$(treehouse enter --print-path 1)"`) |
 | `status`  | `--json` | Print worktree status and lease metadata as JSON |
 | `return`  | `--force` | Clean, reset, and return without prompting |
-| `return`  | `--all`   | Return every held worktree in this repository's pool; leaves alone slots `status` reports `available` or `damaged`, and a `you're here` slot nobody else holds |
+| `return`  | `--all`   | Return every held worktree in this repository's pool; leaves alone slots `status` reports `available` or `damaged`, a `you're here` slot nobody else holds, and a `locked` slot whose `HEAD.lock` is not Treehouse-owned |
 | `return`  | `--if-lease-id` | Return only if the current lease has the expected per-acquisition identity |
 | `return`  | `--if-lease-holder` | Return only if the current lease has the expected holder |
 | `prune`   | `--yes`   | Delete listed prune candidates instead of doing a dry run |
@@ -354,7 +354,7 @@ treehouse return --all
 # 🌳 Returned 2 of 2 held worktree(s); 0 skipped; 1 not held.
 ```
 
-Held means somebody has the slot or it needs recovery: `leased`, `in-use`, `dirty`, `unverified`, `locked` with a Treehouse-owned `HEAD.lock`, and `you're here` when the slot is any of those underneath. Four kinds of slot are left alone. An `available` slot has nothing to return. A `damaged` slot's marker is missing or unreadable, so neither the detach nor the reset a return performs can be judged safe - `treehouse destroy`, which `status` spells out for such a slot, is what removes it. And a slot reported `you're here` that is otherwise parked, clean and quiet is held by nobody: your own shell standing in it is the only reason `status` does not call it available, and `treehouse enter` is documented to leave pool state untouched, so `--all` must not reset it either. And an idle `locked` slot whose `HEAD.lock` is anonymous needs manual inspection, so `--all` skips it.
+Held means somebody has the slot or it needs recovery: `leased`, `in-use`, `dirty`, `unverified`, `locked` with a Treehouse-owned `HEAD.lock`, and `you're here` when the slot is any of those underneath. Four kinds of slot are left alone. An `available` slot has nothing to return. A `damaged` slot's marker is missing or unreadable, so neither the detach nor the reset a return performs can be judged safe - `treehouse destroy`, which `status` spells out for such a slot, is what removes it. And a slot reported `you're here` that is otherwise parked, clean and quiet is held by nobody: your own shell standing in it is the only reason `status` does not call it available, and `treehouse enter` is documented to leave pool state untouched, so `--all` must not reset it either. Last, an idle `locked` slot whose `HEAD.lock` is anonymous needs manual inspection, so `--all` skips it.
 
 Naming any of them explicitly still returns it, including a bare `treehouse return` from inside the slot you are standing in: the narrow target is a deliberate act, while the bulk one must not surprise.
 
