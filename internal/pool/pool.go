@@ -66,6 +66,9 @@ type WorktreeStatus struct {
 	BranchErr string
 	// LockError explains a HEAD.lock obstruction independently of leases.
 	LockError string
+	// LockOwned reports that LockError is a Treehouse-owned HEAD.lock, which
+	// return can recover; anonymous locks need manual inspection.
+	LockOwned bool
 	// RecoveryReason explains why a recovered lease was kept quarantined.
 	RecoveryReason string
 	// RecoveryBackup is the non-empty folder recovery moved this slot's
@@ -540,6 +543,9 @@ func acquire(repoRoot, poolDir string, poolSize int, postCreate []string, opts a
 			// than let ResetWorktree discard the work.
 			dirty, err := vcs.IsDirty(wt.Path)
 			if err != nil || dirty {
+				if lockErr := vcs.HeadLockError(wt.Path); errors.Is(lockErr, vcs.ErrWorktreeLocked) {
+					lockErrors = append(lockErrors, lockErr.Error())
+				}
 				continue
 			}
 			safe, resetRef, head, err := vcs.IsWorktreeSafeToReset(wt.Path, branch)
@@ -1240,6 +1246,7 @@ func List(poolDir string) ([]WorktreeStatus, error) {
 			if lockErr := vcs.HeadLockError(wt.Path); lockErr != nil {
 				ws.LockError = lockErr.Error()
 				locked = errors.Is(lockErr, vcs.ErrWorktreeLocked)
+				ws.LockOwned = errors.Is(lockErr, vcs.ErrWorktreeLockOwned)
 			}
 			// Classify before overlaying the caller's cwd, so HeldOnlyByCwd
 			// distinguishes a held slot from an otherwise available one.
@@ -1260,8 +1267,6 @@ func List(poolDir string) ([]WorktreeStatus, error) {
 				ws.Status = StatusDamaged
 			case locked:
 				ws.Status = StatusLocked
-			case ws.LockError != "":
-				ws.Status = StatusUnverified
 			default:
 				if dirty, _ := vcs.IsDirty(wt.Path); dirty {
 					ws.Status = StatusDirty

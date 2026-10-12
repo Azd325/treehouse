@@ -8,7 +8,10 @@ import (
 	"github.com/kunchenguid/treehouse/v3/internal/process"
 )
 
-var ErrHeadLocked = errors.New("worktree HEAD is locked")
+var (
+	ErrHeadLocked    = errors.New("worktree HEAD is locked")
+	ErrHeadLockOwned = errors.New("HEAD.lock is Treehouse-owned")
+)
 
 // HeadLockError reports an obstruction without attempting recovery.
 func HeadLockError(worktreePath string) error {
@@ -16,10 +19,10 @@ func HeadLockError(worktreePath string) error {
 	if err != nil {
 		return err
 	}
-	return headLockError(headPath)
+	return headLockError(worktreePath, headPath)
 }
 
-func headLockError(headPath string) error {
+func headLockError(worktreePath, headPath string) error {
 	lockPath := headPath + ".lock"
 	if _, err := os.Lstat(lockPath); os.IsNotExist(err) {
 		return nil
@@ -27,7 +30,11 @@ func headLockError(headPath string) error {
 		return fmt.Errorf("cannot inspect HEAD.lock: %w", err)
 	}
 	if sameRegularFile(lockPath, headPath+".treehouse-witness") {
-		return fmt.Errorf("%w: Treehouse-owned HEAD.lock %s; retry get or return after the reset and its Git children exit", ErrHeadLocked, lockPath)
+		action := "retry get or return"
+		if dirty, err := IsDirty(worktreePath); err != nil || dirty {
+			action = "run return"
+		}
+		return fmt.Errorf("%w: %w: Treehouse-owned HEAD.lock %s; %s after the reset and its Git children exit", ErrHeadLocked, ErrHeadLockOwned, lockPath, action)
 	}
 	return fmt.Errorf("%w: anonymous HEAD.lock %s; inspect Git and Treehouse processes before manual removal", ErrHeadLocked, lockPath)
 }
@@ -70,7 +77,7 @@ func sameRegularFile(left, right string) bool {
 // lock, including a legacy Treehouse lock, is never removed automatically.
 func recoverHeadLock(worktreePath, headPath string) error {
 	lockPath, witness := headPath+".lock", headPath+".treehouse-witness"
-	if err := headLockError(headPath); err != nil {
+	if err := headLockError(worktreePath, headPath); err != nil {
 		if !sameRegularFile(lockPath, witness) {
 			return err
 		}
@@ -79,7 +86,7 @@ func recoverHeadLock(worktreePath, headPath string) error {
 			return fmt.Errorf("%w: cannot verify remaining worktree processes for %s: %v", ErrHeadLocked, lockPath, scanErr)
 		}
 		if len(procs) != 0 {
-			return fmt.Errorf("%w: cannot recover %s while worktree processes are running: %v", ErrHeadLocked, lockPath, procs)
+			return fmt.Errorf("%w: cannot recover %s while worktree processes are running: %v; run 'treehouse return --force <slot>' to terminate them and recover", ErrHeadLocked, lockPath, procs)
 		}
 		if !sameRegularFile(lockPath, witness) {
 			return fmt.Errorf("%w: %s changed during recovery; inspect it before retrying", ErrHeadLocked, lockPath)

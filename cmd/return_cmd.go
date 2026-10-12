@@ -234,6 +234,8 @@ func returnableStatus(wt pool.WorktreeStatus) bool {
 	switch wt.Status {
 	case pool.StatusAvailable, pool.StatusDamaged:
 		return false
+	case pool.StatusLocked:
+		return wt.LockOwned
 	default:
 		return true
 	}
