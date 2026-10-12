@@ -1241,6 +1241,9 @@ func List(poolDir string) ([]WorktreeStatus, error) {
 				ws.LockError = lockErr.Error()
 				locked = errors.Is(lockErr, vcs.ErrWorktreeLocked)
 				ws.LockOwned = errors.Is(lockErr, vcs.ErrWorktreeLockOwned)
+				if wt.Leased && ws.LockOwned {
+					ws.LockError = strings.Replace(ws.LockError, "retry get or return", "run return", 1)
+				}
 			}
 			// Classify before overlaying the caller's cwd, so HeldOnlyByCwd
 			// distinguishes a held slot from an otherwise available one.

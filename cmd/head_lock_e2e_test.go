@@ -396,3 +396,27 @@ func TestHeadLockHalfResetToNewerBaseIsDirtyAndNamesReturnOnly(t *testing.T) {
 		t.Fatalf("a dirty half-reset slot must name return only: %+v", statuses[0])
 	}
 }
+
+func TestHeadLockLeasedOwnedLockNamesReturnOnly(t *testing.T) {
+	repo, home := setupTestRepo(t)
+	env := []string{"TREEHOUSE_ROOT=" + filepath.Join(t.TempDir(), "root")}
+	if err := os.WriteFile(filepath.Join(repo, "treehouse.toml"), []byte("max_trees = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, code := runTreehouse(t, repo, home, env, "get", "--lease", "--no-fetch")
+	if code != 0 {
+		t.Fatalf("get: %s", stderr)
+	}
+	plantOwnedHeadLock(t, strings.TrimSpace(out))
+	out, stderr, code = runTreehouse(t, repo, home, env, "status", "--json")
+	var statuses []struct {
+		Status    string `json:"status"`
+		LockError string `json:"lock_error"`
+	}
+	if err := json.Unmarshal([]byte(out), &statuses); err != nil || code != 0 || len(statuses) != 1 {
+		t.Fatalf("status JSON: %s (%s, %v)", out, stderr, err)
+	}
+	if statuses[0].Status != "leased" || !strings.Contains(statuses[0].LockError, "run return") || strings.Contains(statuses[0].LockError, "retry get") {
+		t.Fatalf("a leased slot must name return only: %+v", statuses[0])
+	}
+}
