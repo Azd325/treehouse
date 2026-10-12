@@ -160,6 +160,9 @@ func TestHeadLockKilledResetIsRecoverable(t *testing.T) {
 					if code == 0 {
 						t.Fatalf("return recovered while the killed reset's Git child was still running: %s", stderr)
 					}
+					if !strings.Contains(stderr, "treehouse return --force") {
+						t.Fatalf("refusal must name the way out: %s", stderr)
+					}
 					if _, err := os.Stat(lock); err != nil {
 						t.Fatalf("return removed the lock while the Git child was live: %v", err)
 					}
@@ -204,5 +207,91 @@ func TestHeadLockKilledResetIsRecoverable(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func plantOwnedHeadLock(t *testing.T, slot string) string {
+	t.Helper()
+	lock := headLockPath(t, slot)
+	witness := strings.TrimSuffix(lock, ".lock") + ".treehouse-witness"
+	if err := os.WriteFile(witness, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(witness, lock); err != nil {
+		t.Skipf("hard links unavailable: %v", err)
+	}
+	return lock
+}
+
+func TestHeadLockDirtyOwnedLockNamesReturnOnly(t *testing.T) {
+	repo, home := setupTestRepo(t)
+	env := []string{"TREEHOUSE_ROOT=" + filepath.Join(t.TempDir(), "root")}
+	if err := os.WriteFile(filepath.Join(repo, "treehouse.toml"), []byte("max_trees = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, code := runTreehouse(t, repo, home, env, "get", "--lease", "--no-fetch")
+	if code != 0 {
+		t.Fatalf("get: %s", stderr)
+	}
+	slot := strings.TrimSpace(out)
+	if _, stderr, code := runTreehouse(t, repo, home, env, "return", slot); code != 0 {
+		t.Fatalf("return: %s", stderr)
+	}
+	if err := os.WriteFile(filepath.Join(slot, "half-reset.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock := plantOwnedHeadLock(t, slot)
+
+	_, stderr, code = runTreehouse(t, repo, home, env, "get", "--lease", "--no-fetch")
+	if code == 0 || !strings.Contains(stderr, lock) {
+		t.Fatalf("full-pool get must name the lock of a dirty slot: code=%d %s", code, stderr)
+	}
+	out, stderr, code = runTreehouse(t, repo, home, env, "status", "--json")
+	var statuses []struct {
+		Status    string `json:"status"`
+		LockError string `json:"lock_error"`
+	}
+	if err := json.Unmarshal([]byte(out), &statuses); err != nil || code != 0 || len(statuses) != 1 {
+		t.Fatalf("status JSON: %s (%s, %v)", out, stderr, err)
+	}
+	if statuses[0].Status != "locked" || !strings.Contains(statuses[0].LockError, "run return") || strings.Contains(statuses[0].LockError, "retry get") {
+		t.Fatalf("a dirty locked slot must name return only: %+v", statuses[0])
+	}
+}
+
+func TestHeadLockReturnAllTargetsOnlyOwnedLocks(t *testing.T) {
+	for _, owned := range []bool{true, false} {
+		t.Run(fmt.Sprintf("owned=%t", owned), func(t *testing.T) {
+			repo, home := setupTestRepo(t)
+			env := []string{"TREEHOUSE_ROOT=" + filepath.Join(t.TempDir(), "root")}
+			if err := os.WriteFile(filepath.Join(repo, "treehouse.toml"), []byte("max_trees = 1\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, stderr, code := runTreehouse(t, repo, home, env, "get", "--lease", "--no-fetch")
+			if code != 0 {
+				t.Fatalf("get: %s", stderr)
+			}
+			slot := strings.TrimSpace(out)
+			if _, stderr, code := runTreehouse(t, repo, home, env, "return", slot); code != 0 {
+				t.Fatalf("return: %s", stderr)
+			}
+			var lock string
+			if owned {
+				lock = plantOwnedHeadLock(t, slot)
+			} else {
+				lock = headLockPath(t, slot)
+				if err := os.WriteFile(lock, nil, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, stderr, code = runTreehouse(t, repo, home, env, "return", "--all")
+			_, statErr := os.Stat(lock)
+			if owned && (code != 0 || !os.IsNotExist(statErr)) {
+				t.Fatalf("return --all must recover an owned lock: code=%d %s (%v)", code, stderr, statErr)
+			}
+			if !owned && (code != 0 || statErr != nil) {
+				t.Fatalf("return --all must skip an anonymous lock: code=%d %s (%v)", code, stderr, statErr)
+			}
+		})
 	}
 }

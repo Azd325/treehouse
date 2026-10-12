@@ -386,7 +386,10 @@ func LocalBranchExists(repoRoot, branch string) (bool, error) {
 // Callers must preserve the worktree for possible post-checkout hook output.
 var ErrBranchCreated = gitvcs.ErrBranchCreated
 
-var ErrWorktreeLocked = gitvcs.ErrHeadLocked
+var (
+	ErrWorktreeLocked    = gitvcs.ErrHeadLocked
+	ErrWorktreeLockOwned = gitvcs.ErrHeadLockOwned
+)
 
 // HeadLockError reports a Git slot's HEAD lock without changing it. It never
 // reads a jj or markerless slot through the enclosing Git repository.
