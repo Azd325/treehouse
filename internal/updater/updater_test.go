@@ -961,3 +961,60 @@ func TestBackgroundCheckCommandSuppressesRecursiveChecks(t *testing.T) {
 		t.Fatal("expected TREEHOUSE_NO_UPDATE_CHECK=1 in the child environment")
 	}
 }
+
+func TestInNixStore(t *testing.T) {
+	store := resolved(t, t.TempDir())
+	outside := resolved(t, t.TempDir())
+	prev := nixStoreDir
+	nixStoreDir = store
+	t.Cleanup(func() { nixStoreDir = prev })
+
+	binary := filepath.Join(store, "abc123-treehouse-3.1.2", "bin", "treehouse")
+	mkdirs(t, filepath.Dir(binary))
+	if err := os.WriteFile(binary, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outsideBinary := filepath.Join(outside, "treehouse")
+	if err := os.WriteFile(outsideBinary, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"binary in the store", binary, true},
+		{"binary outside the store", outsideBinary, false},
+		{"the store root itself", store, false},
+		{"sibling sharing the store prefix", store + "-other/bin/treehouse", false},
+		{"missing path under the store", filepath.Join(store, "gone", "bin", "treehouse"), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := InNixStore(tt.path); got != tt.want {
+				t.Fatalf("InNixStore(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("symlink resolving into the store", func(t *testing.T) {
+		link := filepath.Join(outside, "treehouse-link")
+		if err := os.Symlink(binary, link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if !InNixStore(link) {
+			t.Fatalf("InNixStore(%q) = false, want true for a symlink into the store", link)
+		}
+	})
+
+	t.Run("symlink from the store to outside", func(t *testing.T) {
+		link := filepath.Join(store, "profile-link")
+		if err := os.Symlink(outsideBinary, link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if InNixStore(link) {
+			t.Fatalf("InNixStore(%q) = true, want false for a link that resolves outside the store", link)
+		}
+	})
+}
