@@ -63,6 +63,7 @@ func captureStderr(t *testing.T, fn func()) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer f.Close()
 	prev := os.Stderr
 	os.Stderr = f
 	defer func() { os.Stderr = prev }()
