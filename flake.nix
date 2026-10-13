@@ -1,13 +1,8 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # No nixpkgs-darwin-legacy pin: the project requires Go >= 1.25.5
-    # (go.mod), and the -darwin stable branches (24.05, 24.11) only ship
-    # Go 1.22.x / 1.23.x. nixpkgs-unstable still supports x86_64-darwin
-    # (deprecation warning for 26.05, not removed yet), so a single
-    # nixpkgs-unstable input covers all four target systems. Revisit when
-    # nixpkgs-unstable drops x86_64-darwin and a -darwin branch with Go
-    # 1.25+ exists.
+    # No x86_64-darwin: nixpkgs-unstable dropped it in 26.11 and throws on
+    # evaluation.
     flake-compat.url = "github:edolstra/flake-compat";
     flake-compat.flake = false;
   };
@@ -21,7 +16,6 @@
       version = "3.1.2"; # x-release-please-version
       systems = [
         "aarch64-darwin"
-        "x86_64-darwin"
         "aarch64-linux"
         "x86_64-linux"
       ];
