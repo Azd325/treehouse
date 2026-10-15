@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
 	"github.com/kunchenguid/treehouse/v3/internal/updater"
 	"github.com/spf13/cobra"
 )
+
+var runningFromNixStore = updater.RunningFromNixStore
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -15,6 +18,10 @@ var updateCmd = &cobra.Command{
 		if version == "dev" {
 			fmt.Println("Skipping update: running a dev build")
 			return nil
+		}
+
+		if runningFromNixStore() {
+			return errors.New("self-update is not available for Nix installs; upgrade through Nix")
 		}
 
 		fmt.Println("Checking for updates...")

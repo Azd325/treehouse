@@ -34,6 +34,10 @@ const (
 	treehouseDir        = ".treehouse"
 )
 
+// nixStoreDir is the Nix store root. It is a variable so tests can point it at a
+// temporary directory.
+var nixStoreDir = "/nix/store"
+
 // githubAPIURL is the endpoint for fetching the latest release.
 // Overridden in tests to point at a local HTTP server.
 var githubAPIURL = defaultGitHubAPIURL
@@ -66,6 +70,23 @@ type githubRelease struct {
 type githubAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+// InNixStore reports whether path, after symlink resolution, lies inside the
+// Nix store. A path that cannot be resolved is judged as given.
+func InNixStore(path string) bool {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	rel, err := filepath.Rel(nixStoreDir, path)
+	return err == nil && rel != "." && filepath.IsLocal(rel)
+}
+
+// RunningFromNixStore reports whether the running executable lives in the Nix
+// store, where it can only be upgraded through Nix.
+func RunningFromNixStore() bool {
+	exe, err := os.Executable()
+	return err == nil && InNixStore(exe)
 }
 
 // CheckLatest hits the GitHub API, compares versions, and writes the cache.

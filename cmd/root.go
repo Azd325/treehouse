@@ -11,6 +11,8 @@ import (
 
 var version = "dev"
 
+var spawnBackgroundCheck = updater.SpawnBackgroundCheck
+
 // rootFlag holds the value of the persistent --root flag. It overrides both the
 // TREEHOUSE_ROOT environment variable and the configured root; see
 // config.ResolveRoot for the full precedence.
@@ -33,9 +35,10 @@ so that multiple AI coding agents can work on the same repo in parallel.`,
 		return getRunE(cmd, args)
 	},
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Skip update check for dev builds, the update command itself,
+		// Skip update check for dev builds, Nix store installs (upgraded
+		// through Nix, not `treehouse update`), the update command itself,
 		// or when explicitly suppressed via env var.
-		if version == "dev" || os.Getenv("TREEHOUSE_NO_UPDATE_CHECK") == "1" {
+		if version == "dev" || os.Getenv("TREEHOUSE_NO_UPDATE_CHECK") == "1" || runningFromNixStore() {
 			return
 		}
 		if cmd.Name() == "update" {
@@ -52,7 +55,7 @@ so that multiple AI coding agents can work on the same repo in parallel.`,
 
 		// Spawn background check if cache is stale
 		if updater.IsCacheStale(version) {
-			_ = updater.SpawnBackgroundCheck(version)
+			_ = spawnBackgroundCheck(version)
 		}
 	},
 }

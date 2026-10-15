@@ -78,6 +78,8 @@ treehouse = {
 
 The flake exposes `#default` and `#treehouse` package outputs, plus `apps` for `nix run`.
 
+A Nix install upgrades through Nix: `treehouse update` refuses to run from the Nix store and the update notice stays silent there.
+
 **Go**
 
 ```sh
