@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.5](https://github.com/kunchenguid/treehouse/compare/v3.1.4...v3.1.5) (2026-10-20)
+
+
+### Bug Fixes
+
+* **pool:** reclaim empty leftover slot directories on get ([#186](https://github.com/kunchenguid/treehouse/issues/186)) ([03c12c2](https://github.com/kunchenguid/treehouse/commit/03c12c2847f2fa347e98e0a2e382fbde40a60da0))
+
 ## [3.1.4](https://github.com/kunchenguid/treehouse/compare/v3.1.3...v3.1.4) (2026-10-15)
 
 
