@@ -122,7 +122,7 @@ func TestHeadLockKilledResetIsRecoverable(t *testing.T) {
 				}
 				shim := t.TempDir()
 				ready, release := filepath.Join(shim, "ready"), filepath.Join(shim, "release")
-				script := "#!/bin/sh\nif [ \"$1\" = read-tree ]; then\n  : > \"$TREEHOUSE_TEST_READY\"\n  while [ ! -f \"$TREEHOUSE_TEST_RELEASE\" ]; do sleep 0.02; done\nfi\nexec \"$TREEHOUSE_TEST_GIT\" \"$@\"\n"
+				script := "#!/bin/sh\nfor arg in \"$@\"; do\nif [ \"$arg\" = read-tree ]; then\n  : > \"$TREEHOUSE_TEST_READY\"\n  while [ ! -f \"$TREEHOUSE_TEST_RELEASE\" ]; do sleep 0.02; done\nfi\ndone\nexec \"$TREEHOUSE_TEST_GIT\" \"$@\"\n"
 				if err := os.WriteFile(filepath.Join(shim, "git"), []byte(script), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -327,7 +327,7 @@ func TestHeadLockHalfResetToNewerBaseIsDirtyAndNamesReturnOnly(t *testing.T) {
 	}
 	shim := t.TempDir()
 	done, hold := filepath.Join(shim, "done"), filepath.Join(shim, "hold")
-	script := "#!/bin/sh\nif [ \"$1\" = read-tree ]; then\n  \"$TREEHOUSE_TEST_GIT\" \"$@\"\n  rc=$?\n  : > \"$TREEHOUSE_TEST_DONE\"\n  while [ ! -f \"$TREEHOUSE_TEST_HOLD\" ]; do sleep 0.02; done\n  exit $rc\nfi\nexec \"$TREEHOUSE_TEST_GIT\" \"$@\"\n"
+	script := "#!/bin/sh\nfor arg in \"$@\"; do\nif [ \"$arg\" = read-tree ]; then\n  \"$TREEHOUSE_TEST_GIT\" \"$@\"\n  rc=$?\n  : > \"$TREEHOUSE_TEST_DONE\"\n  while [ ! -f \"$TREEHOUSE_TEST_HOLD\" ]; do sleep 0.02; done\n  exit $rc\nfi\ndone\nexec \"$TREEHOUSE_TEST_GIT\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(shim, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

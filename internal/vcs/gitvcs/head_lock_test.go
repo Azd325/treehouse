@@ -7,7 +7,7 @@ import (
 )
 
 func TestHeadLockPreservesLiveTreehouseOwner(t *testing.T) {
-	slot, target, head := setupSafeResetWorktree(t)
+	slot, target, head := setupSafeResetWorktree(t, refFormatInitFlag(t, "files"))
 	headPath, err := gitPath(slot, "HEAD")
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestHeadLockPreservesLiveTreehouseOwner(t *testing.T) {
 func TestHeadLockRejectsUnprovenWitness(t *testing.T) {
 	for _, symlink := range []bool{false, true} {
 		t.Run(map[bool]string{false: "different file", true: "symlink"}[symlink], func(t *testing.T) {
-			slot, target, head := setupSafeResetWorktree(t)
+			slot, target, head := setupSafeResetWorktree(t, refFormatInitFlag(t, "files"))
 			headPath, err := gitPath(slot, "HEAD")
 			if err != nil {
 				t.Fatal(err)
@@ -78,7 +78,7 @@ func TestHeadLockRejectsUnprovenWitness(t *testing.T) {
 func TestHeadLockRecoversOrphanWitness(t *testing.T) {
 	for _, published := range []bool{false, true} {
 		t.Run(map[bool]string{false: "before lock publication", true: "after HEAD publication"}[published], func(t *testing.T) {
-			slot, target, head := setupSafeResetWorktree(t)
+			slot, target, head := setupSafeResetWorktree(t, refFormatInitFlag(t, "files"))
 			headPath, err := gitPath(slot, "HEAD")
 			if err != nil {
 				t.Fatal(err)
