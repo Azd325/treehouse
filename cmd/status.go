@@ -120,20 +120,20 @@ var statusCmd = &cobra.Command{
 				line += fmt.Sprintf("  (held by %s)", wt.LeaseHolder)
 			}
 			if wt.LeaseHolder == pool.RecoveredLeaseHolder {
-				line += yellow(fmt.Sprintf("  (recovery held: %s; inspect it, then free it with: treehouse return %s)", wt.RecoveryReason, quoteReturnPath(wt.Path)))
+				recovery := wt.RecoveryReason
+				if wt.Status != pool.StatusDamaged {
+					recovery += fmt.Sprintf("; inspect it, then free it with: treehouse return %s", quoteReturnPath(wt.Path))
+				}
+				line += yellow(fmt.Sprintf("  (recovery held: %s)", recovery))
 			}
 			if wt.RecoveryBackup != "" {
 				line += yellow(fmt.Sprintf("  (recovered untracked files kept in %s)", ui.PrettyPath(wt.RecoveryBackup)))
 			}
-			if wt.Flavor != "" && wt.Flavor != repoFlavor {
+			if wt.Status != pool.StatusDamaged && wt.Flavor != "" && wt.Flavor != repoFlavor {
 				line += yellow(fmt.Sprintf("  (%s-flavored; repo selects %s — destroy to migrate)", wt.Flavor, repoFlavor))
 			}
 			if wt.Status == pool.StatusDamaged {
-				if wt.LeaseHolder != "" {
-					line += yellow(fmt.Sprintf("  (marker unreadable — 'treehouse destroy %s --include-leased --include-unlanded --yes' to remove)", ui.PrettyPath(wt.Path)))
-				} else {
-					line += yellow(fmt.Sprintf("  (no .git or .jj marker — 'treehouse destroy %s --include-unlanded' to remove)", ui.PrettyPath(wt.Path)))
-				}
+				line += yellow("  (" + pool.DamagedWorktreeAdvice + ")")
 			}
 			fmt.Fprintln(os.Stdout, line)
 
